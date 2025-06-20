@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import ReactJson from "react-json-view";
+import { JsonViewer } from "@textea/json-viewer";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useDropzone } from "react-dropzone";
@@ -9,9 +9,15 @@ function JSONFormatter({ isDarkMode }) {
     const [rawJson, setRawJson] = useState("");
     const [parsedJson, setParsedJson] = useState(null);
     const [error, setError] = useState("");
-    const [viewMode, setViewMode] = useState("tree"); // "tree" | "text" | "table"
+    const [viewMode, setViewMode] = useState("tree");
 
     const handleFormat = () => {
+        if (!rawJson.trim()) {
+            setParsedJson(null);
+            setError("❌ JSON input is empty.");
+            return;
+        }
+
         try {
             const parsed = JSON.parse(rawJson);
             setParsedJson(parsed);
@@ -32,11 +38,7 @@ function JSONFormatter({ isDarkMode }) {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
 
-        const excelBuffer = XLSX.write(workbook, {
-            bookType: "xlsx",
-            type: "array",
-        });
-
+        const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
         const blob = new Blob([excelBuffer], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         });
@@ -45,8 +47,8 @@ function JSONFormatter({ isDarkMode }) {
     };
 
     const renderTable = (obj) => {
-        if (!Array.isArray(obj)) return <p>Table view only works for array of objects.</p>;
-        if (obj.length === 0) return <p>No rows to display.</p>;
+        if (!Array.isArray(obj)) return <p>⚠️ Table view requires an array of objects.</p>;
+        if (obj.length === 0) return <p>📭 No rows to display.</p>;
 
         const headers = Object.keys(obj[0]);
 
@@ -58,9 +60,7 @@ function JSONFormatter({ isDarkMode }) {
                 <tbody>
                     {obj.map((row, idx) => (
                         <tr key={idx}>
-                            {headers.map((h) => (
-                                <td key={h}>{JSON.stringify(row[h])}</td>
-                            ))}
+                            {headers.map((h) => <td key={h}>{JSON.stringify(row[h])}</td>)}
                         </tr>
                     ))}
                 </tbody>
@@ -71,14 +71,19 @@ function JSONFormatter({ isDarkMode }) {
     const handleExcelUpload = (file) => {
         const reader = new FileReader();
         reader.onload = (e) => {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: "array" });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const json = XLSX.utils.sheet_to_json(sheet);
-            setParsedJson(json);
-            setRawJson(JSON.stringify(json, null, 2));
-            setViewMode("table");
-            setError("");
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: "array" });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(sheet);
+                setParsedJson(json);
+                setRawJson(JSON.stringify(json, null, 2));
+                setViewMode("table");
+                setError("");
+            } catch (err) {
+                setParsedJson(null);
+                setError(`❌ Failed to parse Excel file: ${err.message}`);
+            }
         };
         reader.readAsArrayBuffer(file);
     };
@@ -86,17 +91,18 @@ function JSONFormatter({ isDarkMode }) {
     const onDrop = (acceptedFiles) => {
         const file = acceptedFiles[0];
         if (!file) return;
+
         if (file.name.endsWith(".json")) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 setRawJson(e.target.result);
-                handleFormat();
+                setError("");
             };
             reader.readAsText(file);
         } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
             handleExcelUpload(file);
         } else {
-            alert("Unsupported file type. Only .json and .xlsx/.xls allowed.");
+            setError("❌ Unsupported file type. Only .json, .xlsx, and .xls are allowed.");
         }
     };
 
@@ -105,7 +111,7 @@ function JSONFormatter({ isDarkMode }) {
         accept: {
             "application/json": [".json"],
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-            "application/vnd.ms-excel": [".xls"]
+            "application/vnd.ms-excel": [".xls"],
         },
         multiple: false,
     });
@@ -117,9 +123,7 @@ function JSONFormatter({ isDarkMode }) {
             <div {...getRootProps({ className: `dropzone ${isDragActive ? "active" : ""}` })}>
                 <input {...getInputProps()} />
                 <p className="dropzone-text">
-                    {isDragActive
-                        ? "Drop the file here..."
-                        : "📂 Drag & drop a JSON or Excel file here, or click to upload"}
+                    {isDragActive ? "📂 Drop the file..." : "📁 Drag & drop a JSON or Excel file here, or click to upload"}
                 </p>
             </div>
 
@@ -145,11 +149,11 @@ function JSONFormatter({ isDarkMode }) {
             {parsedJson && (
                 <div className="formatted-output">
                     {viewMode === "tree" && (
-                        <ReactJson
-                            src={parsedJson}
-                            theme={isDarkMode ? "monokai" : "rjv-default"}
-                            collapsed={2}
-                            displayDataTypes={false}
+                        <JsonViewer
+                            value={parsedJson}
+                            theme={isDarkMode ? "dark" : "light"}
+                            defaultInspectDepth={2}
+                            rootName={false}
                         />
                     )}
                     {viewMode === "text" && (
@@ -169,3 +173,4 @@ function JSONFormatter({ isDarkMode }) {
 }
 
 export default JSONFormatter;
+
